@@ -1,3 +1,6 @@
+#include <Wire.h>
+#include <U8g2lib.h>
+
 // buttons
 #define BUTTON_POWER D3
 #define BUTTON_HOME D4
@@ -14,12 +17,37 @@
 #define I2S_BCLK D13
 #define I2S_LRCLK D14;
 
-void setup() {
-  // put your setup code here, to run once:
+U8G2_SH1106_128X64_NONAME_F_HW_I2C display(
+  U8G2_R0,
+  U8X8_PIN_NONE
+);
 
+void setup() {
+  Wire.begin(SDA_PIN, SCL_PIN);
+
+  display.begin();
+
+  pinMode(BUTTON_POWER, INPUT_PULLUP);
+  pinMode(BUTTON_HOME, INPUT_PULLUP);
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
+  bool powerPressed = digitalRead(BUTTON_POWER) == LOW;
+  bool homePressed = digitalRead(BUTTON_HOME) == LOW;
 
+  display.clearBuffer();
+  display.setFont(u8g2_font_6x12_tf);
+  display.drawStr(0, 12, "hello lethe");
+  
+  display.setCursor(0, 32);
+  display.print("power: ");
+  display.print(powerPressed ? "pressed" : "released");
+
+  display.setCursor(0, 48);
+  display.print("home: ");
+  display.print(homePressed ? "pressed" : "released");
+
+  display.sendBuffer();
+  
+  delay(20);
 }
