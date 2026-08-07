@@ -1,5 +1,6 @@
 #include <Wire.h>
 #include <U8g2lib.h>
+#include <7Semi_BMI270.h>
 
 // buttons
 #define BUTTON_POWER D3
@@ -15,20 +16,43 @@
 // i2s (for amplifier)
 #define I2S_DOUT D12
 #define I2S_BCLK D13
-#define I2S_LRCLK D14;
+#define I2S_LRCLK D14
 
 U8G2_SH1106_128X64_NONAME_F_HW_I2C display(
   U8G2_R0,
   U8X8_PIN_NONE
 );
 
+BMI270_7Semi imu;
+
 void setup() {
   Wire.begin(SDA_PIN, SCL_PIN);
+
+  BMI270_7Semi::Config cfg;
+
+  cfg.bus = BMI270_7Semi::Bus::I2C;
+  cfg.addr = 0x69;
+  cfg.sda = SDA_PIN;
+  cfg.scl = SCL_PIN;
+  cfg.i2cHz = 400000;
+
+  if (!imu.begin(cfg)){
+    Serial.println("BMI270 failed");
+  }
+
+  imu.setAccelConfig(
+    BMI2_ACC_ODR_100HZ,
+    BMI2_ACC_RANGE_2G,
+    BMI2_ACC_NORMAL_AVG4,
+    BMI2_PERF_OPT_MODE
+  );
 
   display.begin();
 
   pinMode(BUTTON_POWER, INPUT_PULLUP);
   pinMode(BUTTON_HOME, INPUT_PULLUP);
+
+  Serial.begin(115200);
 }
 
 void loop() {
@@ -48,6 +72,18 @@ void loop() {
   display.print(homePressed ? "pressed" : "released");
 
   display.sendBuffer();
+
+  float ax, ay, az;
+  if (imu.readAccel(ax, ay, az)){
+    Serial.print("x: ");
+    Serial.print(ax);
+
+    Serial.print(" y: ");
+    Serial.print(ay);
+
+    Serial.print(" z: ");
+    Serial.print(az);
+  }
   
   delay(20);
 }
