@@ -1,8 +1,9 @@
 #include <Wire.h>
 #include <U8g2lib.h>
 #include <7Semi_BMI270.h>
-#include <BackgroundAudio.h>
+#include <BackgroundAudioSpeech.h>
 #include <ESP32I2SAudio.h>
+#include <libespeak-ng/voice/en.h>
 
 // buttons
 #define BUTTON_POWER D3
@@ -33,6 +34,8 @@ ESP32I2SAudio audio(
   I2S_DOUT
 );
 
+BackgroundAudioSpeech speech(audio);
+
 void setup() {
   Serial.begin(115200);
 
@@ -61,6 +64,13 @@ void setup() {
 
   pinMode(BUTTON_POWER, INPUT_PULLUP);
   pinMode(BUTTON_HOME, INPUT_PULLUP);
+
+  speech.setVoice(voice_en);
+
+  if (!speech.begin()){
+    Serial.println("speech failed");
+  }
+  speech.speak("hello lethe");
 }
 
 void loop() {
@@ -70,7 +80,8 @@ void loop() {
   display.clearBuffer();
   display.setFont(u8g2_font_6x12_tf);
   display.drawStr(0, 12, "hello lethe");
-  
+
+
   display.setCursor(0, 32);
   display.print("power: ");
   display.print(powerPressed ? "pressed" : "released");
