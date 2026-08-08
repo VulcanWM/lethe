@@ -1,7 +1,8 @@
 #include <Wire.h>
 #include <U8g2lib.h>
 #include <7Semi_BMI270.h>
-#include <driver/i2s_std.h>
+#include <BackgroundAudio.h>
+#include <ESP32I2SAudio.h>
 
 // buttons
 #define BUTTON_POWER D3
@@ -26,26 +27,11 @@ U8G2_SH1106_128X64_NONAME_F_HW_I2C display(
 
 BMI270_7Semi imu;
 
-i2s_chan_handle_t tx_handle;
-
-void playTone(int frequency, int durationMs){
-  const int sampleRate = 16000;
-  const int samples = sampleRate * durationMs / 1000;
-
-  for (int i = 0; i < samples; i++){
-    float t = float(i) / sampleRate;
-    int16_t sample = sin(2.0 * PI * frequency * t) * 5000;
-
-    size_t bytesWritten;
-    i2s_channel_write(
-      tx_handle,
-      &sample,
-      sizeof(sample),
-      &bytesWritten,
-      portMAX_DELAY
-    );
-  }
-}
+ESP32I2SAudio audio(
+  I2S_BCLK,
+  I2S_LRCLK,
+  I2S_DOUT
+);
 
 void setup() {
   Serial.begin(115200);
@@ -75,37 +61,6 @@ void setup() {
 
   pinMode(BUTTON_POWER, INPUT_PULLUP);
   pinMode(BUTTON_HOME, INPUT_PULLUP);
-
-  i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_AUTO, I2S_ROLE_MASTER);
-
-  i2s_new_channel(&chan_cfg, &tx_handle, NULL);
-
-  i2s_std_config_t std_cfg = {
-    .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(16000),
-
-    .slot_cfg = I2S_STD_MSB_SLOT_DEFAULT_CONFIG(
-      I2S_DATA_BIT_WIDTH_16BIT,
-      I2S_SLOT_MODE_MONO
-    ),
-
-    .gpio_cfg = {
-      .mclk = I2S_GPIO_UNUSED,
-      .bclk = (gpio_num_t)I2S_BCLK,
-      .ws = (gpio_num_t)I2S_LRCLK,
-      .dout = (gpio_num_t)I2S_DOUT,
-      .din = I2S_GPIO_UNUSED,
-      .invert_flags = {
-        .mclk_inv = false,
-        .bclk_inv = false,
-        .ws_inv = false
-      }
-    }
-  };
-  
-  i2s_channel_init_std_mode(tx_handle, &std_cfg);
-  i2s_channel_enable(tx_handle);
-
-  playTone(440, 500);
 }
 
 void loop() {
