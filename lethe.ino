@@ -5,6 +5,8 @@
 #include <ESP32I2SAudio.h>
 #include <libespeak-ng/voice/en.h>
 #include <esp_sleep.h>
+#include "FS.h"
+#include <LittleFS.h>
 
 // buttons
 #define BUTTON_POWER D3
@@ -21,6 +23,27 @@
 #define I2S_DOUT D12
 #define I2S_BCLK D13
 #define I2S_LRCLK D14
+
+// for LittleFS
+#define FORMAT_LITTLEFS_IF_FAILED true
+
+bool initDirectories(fs::FS &fs){
+  if (!fs.exists("/mcqs")){
+    if (!fs.mkdir("/mcqs")){
+      Serial.println("failed to create mcqs directory");
+      return false;
+    }
+  };
+
+  if (!fs.exists("/flashcards")){
+    if (!fs.mkdir("/flashcards")){
+      Serial.println("failed to create flashcards directory");
+      return false;
+    }
+  };
+
+  return true;
+}
 
 U8G2_SH1106_128X64_NONAME_F_HW_I2C display(
   U8G2_R0,
@@ -73,6 +96,12 @@ enum FACE_STATE {
   FACE_UP,
   FACE_DOWN
 };
+
+const char* gestureToString(Gesture gesture);
+Gesture detectTilt(float ax, float ay, float az);
+Gesture detectFlick(float ax, float ay, float az);
+Gesture detectSpin(float ax, float ay, float az);
+Gesture detectGesture(float ax, float ay, float az);
 
 TILT_STATE tiltState = TILT_NEUTRAL;
 FLICK_STATE flickState = FLICK_NEUTRAL;
@@ -288,6 +317,7 @@ void setup() {
 
   if (!imu.begin(cfg)){
     Serial.println("BMI270 failed");
+    return;
   }
 
   imu.setAccelConfig(
@@ -306,8 +336,18 @@ void setup() {
 
   if (!speech.begin()){
     Serial.println("speech failed");
+    return;
   }
   speech.speak("hello lethe");
+
+  if (!LittleFS.begin(FORMAT_LITTLEFS_IF_FAILED)){
+    Serial.println("LittleFS Mount Failed");
+    return;
+  }
+  
+  if (!initDirectories(LittleFS)){
+    return;
+  }
 }
 
 void loop() {
