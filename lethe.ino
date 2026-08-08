@@ -4,6 +4,7 @@
 #include <BackgroundAudioSpeech.h>
 #include <ESP32I2SAudio.h>
 #include <libespeak-ng/voice/en.h>
+#include <esp_sleep.h>
 
 // buttons
 #define BUTTON_POWER D3
@@ -236,6 +237,42 @@ Gesture detectGesture(float ax, float ay, float az){
   return gesture;
 }
 
+void powerOff(){
+  display.clearBuffer();
+  display.sendBuffer();
+
+  speech.end();
+
+  delay(100);
+
+  esp_sleep_enable_ext0_wakeup(
+    (gpio_num_t)BUTTON_POWER,
+    0
+  );
+
+  esp_deep_sleep_start();
+}
+
+void checkPowerButton(){
+  static unsigned long pressedAt = 0;
+  static bool holding = false;
+
+  bool pressed = digitalRead(BUTTON_POWER) == LOW;
+
+  if (pressed & !holding){
+    holding = true;
+    pressedAt = millis();
+  }
+
+  if (!pressed){
+    holding = false;
+  }
+
+  if (holding && millis() - pressedAt >= 2000){
+    powerOff();
+  }
+}
+
 void setup() {
   Serial.begin(115200);
 
@@ -274,33 +311,26 @@ void setup() {
 }
 
 void loop() {
-  bool powerPressed = digitalRead(BUTTON_POWER) == LOW;
   bool homePressed = digitalRead(BUTTON_HOME) == LOW;
+  checkPowerButton();
 
   display.clearBuffer();
   display.setFont(u8g2_font_6x12_tf);
   display.drawStr(0, 12, "hello lethe");
 
-
   display.setCursor(0, 22);
-  display.print("power: ");
-  display.print(powerPressed ? "pressed" : "released");
-
-  display.setCursor(0, 32);
   display.print("home: ");
   display.print(homePressed ? "pressed" : "released");
 
-  display.sendBuffer();
-
   float ax, ay, az;
-  Gesture gesture;
   if (imu.readAccel(ax, ay, az)) {
     Gesture gesture = detectGesture(ax, ay, az);
 
-    display.setCursor(0, 42);
+    display.setCursor(0, 32);
     display.print("gesture: ");
     display.print(gestureToString(gesture));
   }
+  display.sendBuffer();
   
   delay(20);
 }
