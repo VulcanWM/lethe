@@ -36,6 +36,206 @@ ESP32I2SAudio audio(
 
 BackgroundAudioSpeech speech(audio);
 
+enum Gesture {
+  NONE,
+
+  TILT_UP,
+  TILT_DOWN,
+  TILT_LEFT,
+  TILT_RIGHT,
+
+  FLICK_UP,
+  FLICK_DOWN,
+  FLICK_LEFT,
+  FLICK_RIGHT,
+
+  SPIN,
+};
+
+enum TILT_STATE {
+  TILT_NEUTRAL,
+  TILT_WAITING_RETURN_RIGHT,
+  TILT_WAITING_RETURN_LEFT,
+  TILT_WAITING_RETURN_UP,
+  TILT_WAITING_RETURN_DOWN
+};
+
+enum FLICK_STATE {
+  FLICK_NEUTRAL,
+  FLICK_WAITING_RETURN_RIGHT,
+  FLICK_WAITING_RETURN_LEFT,
+  FLICK_WAITING_RETURN_UP,
+  FLICK_WAITING_RETURN_DOWN,
+};
+
+enum FACE_STATE {
+  FACE_UP,
+  FACE_DOWN
+};
+
+TILT_STATE tiltState = TILT_NEUTRAL;
+FLICK_STATE flickState = FLICK_NEUTRAL;
+FACE_STATE faceState = FACE_UP;
+
+const char* gestureToString(Gesture gesture){
+  switch (gesture){
+    case TILT_UP: return "tilt up";
+    case TILT_DOWN: return "tilt down";
+    case TILT_LEFT: return "tilt left";
+    case TILT_RIGHT: return "tilt right";
+
+    case FLICK_UP: return "flick up";
+    case FLICK_DOWN: return "flick down";
+    case FLICK_LEFT: return "flick left";
+    case FLICK_RIGHT: return "flick right";
+
+    case SPIN: return "spin";
+
+    default: return "none";
+  }
+}
+
+Gesture detectTilt(float ax, float ay, float az){
+  const float tiltThreshold = 0.7;
+  const float neutralThreshold = 0.25;
+
+  if (tiltState == TILT_NEUTRAL){
+    if (ax > tiltThreshold){
+      tiltState = TILT_WAITING_RETURN_RIGHT;
+    }
+    else if (ax < (-1 * tiltThreshold)){
+      tiltState = TILT_WAITING_RETURN_LEFT;
+    }
+    else if (ay > tiltThreshold){
+      tiltState = TILT_WAITING_RETURN_UP;
+    }
+    else if (ay < (-1 * tiltThreshold)){
+      tiltState = TILT_WAITING_RETURN_DOWN;
+    }
+  }
+  
+  if (tiltState == TILT_WAITING_RETURN_DOWN){
+    if (abs(ax) < neutralThreshold && abs(ay) < neutralThreshold){
+      tiltState = TILT_NEUTRAL;
+      return TILT_DOWN;
+    }
+  }
+  if (tiltState == TILT_WAITING_RETURN_UP) {
+    if (abs(ax) < neutralThreshold && abs(ay) < neutralThreshold){
+      tiltState = TILT_NEUTRAL;
+      return TILT_UP;
+    }
+  }
+
+  if (tiltState == TILT_WAITING_RETURN_LEFT){
+    if (abs(ax) < neutralThreshold && abs(ay) < neutralThreshold){
+      tiltState = TILT_NEUTRAL;
+      return TILT_LEFT;
+    }
+  }
+
+  if (tiltState == TILT_WAITING_RETURN_RIGHT){
+    if (abs(ax) < neutralThreshold && abs(ay) < neutralThreshold){
+      tiltState = TILT_NEUTRAL;
+      return TILT_RIGHT;
+    }
+  }
+  return NONE;
+}
+
+Gesture detectFlick(float ax, float ay, float az){
+  const float flickThreshold = 1.5;
+  const float neutralThreshold = 0.25;
+
+  if (flickState == FLICK_NEUTRAL){
+    if (ax > flickThreshold){
+      flickState = FLICK_WAITING_RETURN_RIGHT;
+    }
+    else if (ax < (-1 * flickThreshold)){
+      flickState = FLICK_WAITING_RETURN_LEFT;
+    }
+    else if (ay > flickThreshold){
+      flickState = FLICK_WAITING_RETURN_UP;
+    }
+    else if (ay < (-1 * flickThreshold)){
+      flickState = FLICK_WAITING_RETURN_DOWN;
+    }
+  }
+  
+  if (flickState == FLICK_WAITING_RETURN_DOWN){
+    if (abs(ax) < neutralThreshold && abs(ay) < neutralThreshold){
+      flickState = FLICK_NEUTRAL;
+      return FLICK_DOWN;
+    }
+  }
+  if (flickState == FLICK_WAITING_RETURN_UP) {
+    if (abs(ax) < neutralThreshold && abs(ay) < neutralThreshold){
+      flickState = FLICK_NEUTRAL;
+      return FLICK_UP;
+    }
+  }
+
+  if (flickState == FLICK_WAITING_RETURN_LEFT){
+    if (abs(ax) < neutralThreshold && abs(ay) < neutralThreshold){
+      flickState = FLICK_NEUTRAL;
+      return FLICK_LEFT;
+    }
+  }
+
+  if (flickState == FLICK_WAITING_RETURN_RIGHT){
+    if (abs(ax) < neutralThreshold && abs(ay) < neutralThreshold){
+      flickState = FLICK_NEUTRAL;
+      return FLICK_RIGHT;
+    }
+  }
+  return NONE;
+}
+
+Gesture detectSpin(float ax, float ay, float az){
+  const float faceDownThreshold = -0.8;
+  const float faceUpThreshold = 0.8;
+
+  if (faceState == FACE_UP && az < faceDownThreshold){
+    faceState = FACE_DOWN;
+  }
+  
+  if (faceState == FACE_DOWN && az > faceUpThreshold){
+    faceState = FACE_UP;
+    return SPIN;
+  }
+
+  return NONE;
+}
+
+Gesture detectGesture(float ax, float ay, float az){
+  Gesture gesture;
+
+  if (flickState != FLICK_NEUTRAL){
+    return detectFlick(ax, ay, az);
+  }
+
+  if (tiltState != TILT_NEUTRAL){
+    return detectTilt(ax, ay, az);
+  }
+
+  if (faceState != FACE_UP){
+    return detectSpin(ax, ay, az);
+  }
+
+  gesture = detectFlick(ax, ay, az);
+  if (flickState != FLICK_NEUTRAL){
+    return gesture;
+  }
+
+  gesture = detectTilt(ax, ay, az);
+  if (tiltState != TILT_NEUTRAL){
+    return gesture;
+  }
+
+  gesture = detectSpin(ax, ay, az);
+  return gesture;
+}
+
 void setup() {
   Serial.begin(115200);
 
@@ -82,26 +282,24 @@ void loop() {
   display.drawStr(0, 12, "hello lethe");
 
 
-  display.setCursor(0, 32);
+  display.setCursor(0, 22);
   display.print("power: ");
   display.print(powerPressed ? "pressed" : "released");
 
-  display.setCursor(0, 48);
+  display.setCursor(0, 32);
   display.print("home: ");
   display.print(homePressed ? "pressed" : "released");
 
   display.sendBuffer();
 
   float ax, ay, az;
-  if (imu.readAccel(ax, ay, az)){
-    Serial.print("x: ");
-    Serial.println(ax);
+  Gesture gesture;
+  if (imu.readAccel(ax, ay, az)) {
+    Gesture gesture = detectGesture(ax, ay, az);
 
-    Serial.print("y: ");
-    Serial.println(ay);
-
-    Serial.print("z: ");
-    Serial.println(az);
+    display.setCursor(0, 42);
+    display.print("gesture: ");
+    display.print(gestureToString(gesture));
   }
   
   delay(20);
