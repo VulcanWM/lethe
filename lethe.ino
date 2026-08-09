@@ -98,6 +98,14 @@ enum FACE_STATE {
   FACE_DOWN
 };
 
+enum DEVICE_STATE {
+  HOME,
+  MCQ_SET_MENU,
+  FLASHCARD_SET_MENU,
+  MCQ_ACTIVE,
+  FLASHCARD_ACTIVE
+};
+
 const char* gestureToString(Gesture gesture);
 Gesture detectTilt(float ax, float ay, float az);
 Gesture detectFlick(float ax, float ay, float az);
@@ -107,6 +115,7 @@ Gesture detectGesture(float ax, float ay, float az);
 TILT_STATE tiltState = TILT_NEUTRAL;
 FLICK_STATE flickState = FLICK_NEUTRAL;
 FACE_STATE faceState = FACE_UP;
+DEVICE_STATE deviceState = HOME;
 
 const char* gestureToString(Gesture gesture){
   switch (gesture){
@@ -531,6 +540,18 @@ void checkPowerButton(){
   }
 }
 
+void checkHomeButton(){
+  bool pressed = digitalRead(BUTTON_HOME) == LOW;
+
+  if (pressed){
+    display.clearBuffer();
+    display.sendBuffer();
+
+    speech.end();
+    deviceState = HOME;
+  }
+}
+
 void getAllFlashcardSets(fs::FS &fs){
   File root = fs.open("/flashcards");
   
@@ -556,7 +577,7 @@ void getAllMCQSets(fs::FS &fs){
   File root = fs.open("/mcqs");
 
   if (!root || !root.isDirectory()){
-    Serial.println("failed to open mcqs directory")
+    Serial.println("failed to open mcqs directory");
   }
 
   File file = root.openNextFile();
@@ -569,6 +590,26 @@ void getAllMCQSets(fs::FS &fs){
 
     file = root.openNextFile();
   }
+}
+
+void updateHome(){
+
+}
+
+void updateMCQMenu(){
+
+}
+
+void updateFlashcardMenu(){
+
+}
+
+void updateMCQ(){
+
+}
+
+void updateFlashcard(){
+
 }
 
 void setup() {
@@ -622,26 +663,30 @@ void setup() {
 void loop() {
   bool homePressed = digitalRead(BUTTON_HOME) == LOW;
   checkPowerButton();
-
-  display.clearBuffer();
-  display.setFont(u8g2_font_6x12_tf);
-  display.drawStr(0, 12, "hello lethe");
-
-  display.setCursor(0, 22);
-  display.print("home: ");
-  display.print(homePressed ? "pressed" : "released");
-
-  float ax, ay, az;
-  if (imu.readAccel(ax, ay, az)) {
-    Gesture gesture = detectGesture(ax, ay, az);
-
-    display.setCursor(0, 32);
-    display.print("gesture: ");
-    display.print(gestureToString(gesture));
-  }
-  display.sendBuffer();
-
+  checkHomeButton();
   checkUSB();
+
+  switch (deviceState) {
+    case HOME:
+      updateHome();
+      break;
+
+    case MCQ_SET_MENU:
+      updateMCQMenu();
+      break;
+
+    case FLASHCARD_SET_MENU:
+      updateFlashcardMenu();
+      break;
+
+    case MCQ_ACTIVE:
+      updateMCQ();
+      break;
+
+    case FLASHCARD_ACTIVE:
+      updateFlashcard();
+      break;
+  }
   
   delay(20);
 }
