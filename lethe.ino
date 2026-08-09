@@ -531,6 +531,45 @@ void checkPowerButton(){
   }
 }
 
+void getAllFlashcardSets(fs::FS &fs){
+  File root = fs.open("/flashcards");
+  
+  File file = root.openNextFile();
+
+  if (!root || !root.isDirectory()){
+    Serial.println("failed to open flashcards directory");
+    return;
+  }
+
+  while (file){
+    if (!file.isDirectory()){
+      Serial.println(file.name());
+      Serial.print("SIZE: ");
+      Serial.println(file.size());
+    }
+
+    file = root.openNextFile();
+  }
+}
+
+void getAllMCQSets(fs::FS &fs){
+  File root = fs.open("/mcqs");
+
+  if (!root || !root.isDirectory()){
+    Serial.println("failed to open mcqs directory")
+  }
+
+  File file = root.openNextFile();
+  while (file){
+    if (!file.isDirectory()){
+      Serial.println(file.name());
+      Serial.print("SIZE: ");
+      Serial.println(file.size());
+    }
+
+    file = root.openNextFile();
+  }
+}
 
 void setup() {
   Serial.begin(115200);
