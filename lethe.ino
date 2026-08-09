@@ -7,6 +7,7 @@
 #include <esp_sleep.h>
 #include "FS.h"
 #include <LittleFS.h>
+#include <ArduinoJson.h>
 
 // buttons
 #define BUTTON_POWER D3
@@ -282,6 +283,234 @@ void powerOff(){
   esp_deep_sleep_start();
 }
 
+bool validateMCQJSON(const String& json){
+  JsonDocument doc;
+
+  DeserializationError error = deserializeJson(doc, json);
+
+  if (error){
+    Serial.println("invalid json");
+    return false;
+  }
+
+  if (!doc["name"].is<const char*>()){
+    Serial.println("missing/invalid name");
+    return false;
+  }
+
+  if (!doc["questions"].is<JsonArray>()){
+    Serial.println("missing questions array");
+    return false;
+  }
+
+  JsonArray questions = doc["questions"];
+
+  if (questions.size() == 0){
+    Serial.println("no questions");
+    return false;
+  }
+
+  for (JsonObject question: questions){
+    if (!question["question"].is<const char*>()){
+      Serial.println("invalid question");
+      return false;
+    }
+
+    if (!question["options"].is<JsonArray>()){
+      Serial.println("ERROR: missing/invalid options");
+      return false;
+    }
+
+    JsonArray options = question["options"];
+
+    if (options.size() < 2 || options.size() > 4){
+      Serial.println("mcq must have between 2 and 4 options");
+      return false;
+    }
+
+    for (JsonVariant option: options){
+      if (!option.is<const char*>()){
+        Serial.println("option must be text");
+        return false;
+      }
+    }
+
+    if (!question["answer"].is<int>()){
+      Serial.println("invalid answer");
+      return false;
+    }
+
+    int answer = question["answer"];
+    if (answer < 0 || answer >= options.size()){
+      Serial.print("answer must be between 0-");
+      Serial.println(options.size()-1);
+      return false;
+    }
+  }
+
+  return true;
+}
+
+bool validateFlashcardJSON(const String& json){
+  JsonDocument doc;
+
+  DeserializationError error = deserializeJson(doc, json);
+
+  if (error){
+    Serial.println("ERROR: invalid json");
+    return false;
+  }
+
+  if (!doc["name"].is<const char*>()){
+    Serial.println("ERROR: missing/invalid json");
+    return false;
+  }
+
+  if (!doc["cards"].is<JsonArray>()){
+    Serial.println("ERROR: missing cards array");
+    return false;
+  }
+
+  JsonArray cards = doc["cards"];
+
+  if (cards.size() == 0){
+    Serial.println("ERROR: no flashcards");
+    return false;
+  }
+
+  for (JsonObject card: cards){
+    if (!card["front"].is<const char*>()){
+      Serial.println("ERROR: invalid front");
+      return false;
+    }
+
+    if (!card["back"].is<const char*>()){
+      Serial.println("ERROR: invalid back");
+      return false;
+    }
+  }
+
+  return true;
+}
+
+bool validateSet(const String& type, const String& json){
+  if (type == "MCQ"){
+    return validateMCQJSON(json);
+  }
+
+  if (type == "FLASHCARD"){
+    return validateFlashcardJSON(json);
+  }
+
+  return false;
+}
+
+bool validateTempFile(const String& type){
+  File file = LittleFS.open("/tmp.json", FILE_READ);
+
+  if (!file){
+    Serial.println("ERROR: failed to open temp file");
+    return false;
+  }
+
+  String json = file.readString();
+  file.close();
+
+  return validateSet(type, json);
+}
+
+bool moveTempFile(const String& finalPath){
+  if (LittleFS.exists(finalPath)){
+    LittleFS.remove(finalPath);
+  }
+
+  if (!LittleFS.rename("/tmp.json", finalPath)){
+    Serial.println("ERROR: failed to move temp file");
+    return false;
+  }
+
+  return true;
+}
+
+void checkUSB(){
+  if (Serial.available()){
+    String command = Serial.readStringUntil('\n');
+    command.trim();
+
+    if (command == "PING"){
+      Serial.println("PONG");
+      return;
+    }
+
+    if (command == "UPLOAD"){
+      String type = Serial.readStringUntil('\n');
+      String name = Serial.readStringUntil('\n');
+      String sizeString = Serial.readStringUntil('\n');
+
+      type.trim();
+      name.trim();
+      sizeString.trim();
+
+      size_t fileSize = sizeString.toInt();
+
+      if (name.length() == 0 ||
+          name.indexOf('/') != -1 ||
+          name.indexOf('\\') != -1 ||
+          !name.endsWith(".json")){
+        Serial.println("ERROR: invalid filename");
+        return;
+      }
+
+      String finalPath;
+
+      if (type == "MCQ"){
+        finalPath = "/mcqs/" + name;
+      } else if (type == "FLASHCARD"){
+        finalPath = "/flashcards/" + name;
+      } else {
+        Serial.println("ERROR: invalid type");
+        return;
+      }
+
+      if (LittleFS.exists("/tmp.json")){
+        LittleFS.remove("/tmp.json");
+      }
+
+      File tempFile = LittleFS.open("/tmp.json", FILE_WRITE);
+      if (!tempFile){
+        Serial.println("ERROR: failed to open temp file");
+        return;
+      }
+
+      size_t received = 0;
+
+      while (received < fileSize){
+        if (Serial.available()){
+          uint8_t byte = Serial.read();
+          tempFile.write(byte);
+          received++;
+        }
+      }
+
+      tempFile.close();
+
+      if (!validateTempFile(type)){
+        Serial.println("ERROR: invalid set");
+        LittleFS.remove("/tmp.json");
+        return;
+      }
+
+      if (!moveTempFile(finalPath)){
+        Serial.println("ERROR: could not copy file into directory");
+        LittleFS.remove("/tmp.json");
+        return;
+      }
+
+      Serial.println("OK");
+    }
+  }
+}
+
 void checkPowerButton(){
   static unsigned long pressedAt = 0;
   static bool holding = false;
@@ -301,6 +530,7 @@ void checkPowerButton(){
     powerOff();
   }
 }
+
 
 void setup() {
   Serial.begin(115200);
@@ -371,6 +601,8 @@ void loop() {
     display.print(gestureToString(gesture));
   }
   display.sendBuffer();
+
+  checkUSB();
   
   delay(20);
 }
