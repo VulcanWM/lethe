@@ -280,7 +280,7 @@ void powerOff(){
   display.clearBuffer();
   display.sendBuffer();
 
-  speech.end();
+  speech.flush();
 
   delay(100);
 
@@ -526,7 +526,7 @@ void checkPowerButton(){
 
   bool pressed = digitalRead(BUTTON_POWER) == LOW;
 
-  if (pressed & !holding){
+  if (pressed && !holding){
     holding = true;
     pressedAt = millis();
   }
@@ -541,15 +541,19 @@ void checkPowerButton(){
 }
 
 void checkHomeButton(){
+  static bool wasPressed = false;
+
   bool pressed = digitalRead(BUTTON_HOME) == LOW;
 
-  if (pressed){
+  if (pressed && !wasPressed){
     display.clearBuffer();
     display.sendBuffer();
 
-    speech.end();
+    speech.flush();
     deviceState = HOME;
   }
+
+  wasPressed = pressed;
 }
 
 void getAllFlashcardSets(fs::FS &fs){
@@ -593,23 +597,82 @@ void getAllMCQSets(fs::FS &fs){
 }
 
 void updateHome(){
+  static bool willNeedRender = true;
+  static int menuOptionSelected = 0;
+  float ax, ay, az;
+  if (imu.readAccel(ax, ay, az)) {
+    Gesture gesture = detectGesture(ax, ay, az);
+    if (gesture == TILT_UP){
+      if (menuOptionSelected == 1){
+        menuOptionSelected = 0;
+        willNeedRender = true;
+      }
+    }
+    else if (gesture == TILT_DOWN){
+      if (menuOptionSelected == 0){
+        menuOptionSelected = 1;
+        willNeedRender = true;
+      }
+    }
+    else if (gesture == TILT_RIGHT){
+      if (menuOptionSelected == 0){
+        deviceState = MCQ_SET_MENU;
+      } else {
+        deviceState = FLASHCARD_SET_MENU;
+      }
+      willNeedRender = true;
+      return;
+    }
+  }
 
+  if (willNeedRender){
+    display.clearBuffer();
+    display.setFont(u8g2_font_6x12_tf);
+    display.setCursor(0, 10);
+    display.print("lethe");
+
+    display.setCursor(0, 20);
+    if (menuOptionSelected == 0){
+      display.print("> MCQs");
+    } else {
+      display.print(" MCQs");
+    }
+
+    display.setCursor(0, 30);
+    if (menuOptionSelected == 1){
+      display.print("> Flashcards");
+    } else {
+      display.print("Flashcards");
+    }
+
+    display.sendBuffer();
+    willNeedRender = false;
+  }
 }
 
 void updateMCQMenu(){
-
+  // up and down to move between the sets
+  // tilt right for okay to select that set
 }
 
 void updateFlashcardMenu(){
-
+  // up and down to move between the sets
+  // tilt right for okay to select the set
 }
 
 void updateMCQ(){
-
+  //  play question
+  //  tilt for each answer (four directions or less)
+  //  spin to finish the quiz (if finish then say score and go back to select set menu)
+  //  on answer, say answer (right/wrong), then next question
+  //  keep a record of which questions were answered correctly/wrong and will keep on going until all questions were answered correctly
 }
 
 void updateFlashcard(){
-
+  //  tilt forward to flip to back then say
+  //  tilt left/right to say its right/wrong
+  //  spin to finish
+  //  keep showing wrong ones until finished
 }
 
 void setup() {
@@ -661,7 +724,6 @@ void setup() {
 }
 
 void loop() {
-  bool homePressed = digitalRead(BUTTON_HOME) == LOW;
   checkPowerButton();
   checkHomeButton();
   checkUSB();
