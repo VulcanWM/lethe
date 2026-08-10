@@ -8,6 +8,7 @@
 #include "FS.h"
 #include <LittleFS.h>
 #include <ArduinoJson.h>
+#include <vector>
 
 // buttons
 #define BUTTON_POWER D3
@@ -116,6 +117,10 @@ TILT_STATE tiltState = TILT_NEUTRAL;
 FLICK_STATE flickState = FLICK_NEUTRAL;
 FACE_STATE faceState = FACE_UP;
 DEVICE_STATE deviceState = HOME;
+
+bool mcqSetsChanged = true;
+bool flashcardSetsChanged = true;
+String setSelected;
 
 const char* gestureToString(Gesture gesture){
   switch (gesture){
@@ -515,6 +520,12 @@ void checkUSB(){
         return;
       }
 
+      if (type == "MCQ"){
+        mcqSetsChanged = true;
+      } else if (type == "FLASHCARD"){
+        flashcardSetsChanged = true;
+      } 
+
       Serial.println("OK");
     }
   }
@@ -556,49 +567,53 @@ void checkHomeButton(){
   wasPressed = pressed;
 }
 
-void getAllFlashcardSets(fs::FS &fs){
+std::vector<String> getAllFlashcardSets(fs::FS &fs){
+  std::vector<String> sets;
   File root = fs.open("/flashcards");
   
   File file = root.openNextFile();
 
   if (!root || !root.isDirectory()){
     Serial.println("failed to open flashcards directory");
-    return;
+    return sets;
   }
 
   while (file){
     if (!file.isDirectory()){
-      Serial.println(file.name());
-      Serial.print("SIZE: ");
-      Serial.println(file.size());
+      sets.push_back(String(file.name()));
     }
 
     file = root.openNextFile();
   }
+
+  return sets;
 }
 
-void getAllMCQSets(fs::FS &fs){
+std::vector<String> getAllMCQSets(fs::FS &fs){
+  std::vector<String> sets;
   File root = fs.open("/mcqs");
 
   if (!root || !root.isDirectory()){
     Serial.println("failed to open mcqs directory");
+    return sets;
   }
 
   File file = root.openNextFile();
   while (file){
     if (!file.isDirectory()){
-      Serial.println(file.name());
-      Serial.print("SIZE: ");
-      Serial.println(file.size());
+      sets.push_back(String(file.name()));
     }
 
     file = root.openNextFile();
   }
+
+  return sets;
 }
 
 void updateHome(){
   static bool willNeedRender = true;
   static int menuOptionSelected = 0;
+
   float ax, ay, az;
   if (imu.readAccel(ax, ay, az)) {
     Gesture gesture = detectGesture(ax, ay, az);
@@ -651,6 +666,72 @@ void updateHome(){
 }
 
 void updateMCQMenu(){
+  static bool willNeedRender = true;
+  static int menuOptionSelected = 0;
+  static std::vector<String> sets = getAllMCQSets(LittleFS);
+
+  if (mcqSetsChanged){
+    sets = getAllMCQSets(LittleFS);
+    mcqSetsChanged = false;
+
+    menuOptionSelected = 0;
+    willNeedRender = true;
+  }
+
+  float ax, ay, az;
+  if (imu.readAccel(ax, ay, az)) {
+    Gesture gesture = detectGesture(ax, ay, az);
+    if (gesture == TILT_UP){
+      if (!sets.empty() && menuOptionSelected != 0){
+        menuOptionSelected -= 1;
+        willNeedRender = true;
+      }
+    }
+    else if (gesture == TILT_DOWN){
+      if (!sets.empty() && menuOptionSelected != sets.size() - 1){
+        menuOptionSelected += 1;
+        willNeedRender = true;
+      }
+    }
+    else if (gesture == TILT_RIGHT){
+      if (!sets.empty()){
+        deviceState = MCQ_ACTIVE;
+        setSelected = sets[menuOptionSelected];
+        willNeedRender = true;
+        return;
+      }
+    }
+    else if (gesture == TILT_LEFT){
+      deviceState = HOME;
+      willNeedRender = true;
+    }
+  }
+
+  if (willNeedRender){
+    display.clearBuffer();
+    display.setFont(u8g2_font_6x12_tf);
+    if (sets.empty()){
+      display.setCursor(0, 10);
+      display.print("no mcq sets");
+    } else {
+      int y = 10;
+      for (int i=menuOptionSelected; i < menuOptionSelected+4; i++) {
+        display.setCursor(0, y);
+        if (i < sets.size()){
+          if (i == menuOptionSelected){
+            display.print("> ");
+          } else {
+            display.print("  ");
+          }
+          display.print(sets[i]);
+        }
+        y += 10;
+      }
+    }
+    display.sendBuffer();
+    willNeedRender = false;
+  }
+
   // up and down to move between the sets
   // tilt right for okay to select that set
 }
