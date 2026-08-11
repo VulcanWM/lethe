@@ -731,17 +731,73 @@ void updateMCQMenu(){
     display.sendBuffer();
     willNeedRender = false;
   }
-
-  // up and down to move between the sets
-  // tilt right for okay to select that set
 }
 
 void updateFlashcardMenu(){
-  // up and down to move between the sets
-  // tilt right for okay to select the set
+  static bool willNeedRender = true;
+  static int menuOptionSelected = 0;
+  static std::vector<String> sets = getAllFlashcardSets(LittleFS);
+
+  if (flashcardSetsChanged){
+    sets = getAllFlashcardSets(LittleFS);
+    flashcardSetsChanged = false;
+
+    menuOptionSelected = 0;
+    willNeedRender = true;
+  }
+
+  float ax, ay, az;
+  if (imu.readAccel(ax, ay, az)){
+    Gesture gesture = detectGesture(ax, ay, az);
+    if (gesture == TILT_UP){
+      if (!sets.empty() && menuOptionSelected != 0){
+        menuOptionSelected -= 1;
+        willNeedRender = true;
+      }
+    } else if (gesture == TILT_DOWN){
+      if (!sets.empty() && menuOptionSelected != sets.size() - 1){
+        menuOptionSelected += 1;
+        willNeedRender = true;
+      }
+    } else if (gesture == TILT_RIGHT){
+      deviceState = FLASHCARD_ACTIVE;
+      setSelected = sets[menuOptionSelected];
+      willNeedRender = true;
+      return;
+    } else if (gesture == TILT_LEFT){
+      deviceState = HOME;
+      willNeedRender = true;
+    }
+  }
+
+  if (willNeedRender){
+    display.clearBuffer();
+    display.setFont(u8g2_font_6x12_tf);
+    if (sets.empty()){
+      display.setCursor(0, 10);
+      display.print("no flashcard sets");
+    } else {
+      int y = 10;
+      for (int i=menuOptionSelected; i < menuOptionSelected+4; i++){
+        display.setCursor(0, y);
+        if (i < sets.size()){
+          if (i == menuOptionSelected){
+            display.print("> ");
+          } else {
+            display.print("  ");
+          }
+          display.print(sets[i]);
+        }
+        y += 10;
+      }
+    }
+    display.sendBuffer();
+    willNeedRender = false;
+  }
 }
 
 void updateMCQ(){
+
   //  play question
   //  tilt for each answer (four directions or less)
   //  spin to finish the quiz (if finish then say score and go back to select set menu)
