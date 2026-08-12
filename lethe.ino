@@ -29,16 +29,16 @@
 // for LittleFS
 #define FORMAT_LITTLEFS_IF_FAILED true
 
-bool initDirectories(fs::FS &fs){
-  if (!fs.exists("/mcqs")){
-    if (!fs.mkdir("/mcqs")){
+bool initDirectories(){
+  if (!LittleFS.exists("/mcqs")){
+    if (!LittleFS.mkdir("/mcqs")){
       Serial.println("failed to create mcqs directory");
       return false;
     }
   };
 
-  if (!fs.exists("/flashcards")){
-    if (!fs.mkdir("/flashcards")){
+  if (!LittleFS.exists("/flashcards")){
+    if (!LittleFS.mkdir("/flashcards")){
       Serial.println("failed to create flashcards directory");
       return false;
     }
@@ -433,6 +433,54 @@ bool validateTempFile(const String& type){
   return validateSet(type, json);
 }
 
+JsonDocument parseMCQSet(const String& setName){
+  JsonDocument doc;
+
+  String filePath = "/mcqs/" + setName;
+
+  if (!LittleFS.exists(filePath)){
+    Serial.println("file does not exist");
+    return doc;
+  }
+
+  File file = LittleFS.open(filePath);
+  if (!file){
+    Serial.println("file is not opening");
+    return doc;
+  }
+
+  String json = file.readString();
+  file.close();
+
+  DeserializationError error = deserializeJson(doc, json);
+
+  return doc;
+}
+
+JsonDocument parseFlashcardSet(const String& setName){
+  JsonDocument doc;
+
+  String filePath = "/flashcards/" + setName;
+
+  if (!LittleFS.exists(filePath)){
+    Serial.println("file does not exist");
+    return doc;
+  }
+
+  File file = LittleFS.open(filePath);
+  if (!file){
+    Serial.println("file is not opening");
+    return doc;
+  }
+
+  String json = file.readString();
+  file.close();
+
+  DeserializationError error = deserializeJson(doc, json);
+
+  return doc;
+}
+
 bool moveTempFile(const String& finalPath){
   if (LittleFS.exists(finalPath)){
     LittleFS.remove(finalPath);
@@ -567,9 +615,9 @@ void checkHomeButton(){
   wasPressed = pressed;
 }
 
-std::vector<String> getAllFlashcardSets(fs::FS &fs){
+std::vector<String> getAllFlashcardSets(){
   std::vector<String> sets;
-  File root = fs.open("/flashcards");
+  File root = LittleFS.open("/flashcards");
   
   File file = root.openNextFile();
 
@@ -589,9 +637,9 @@ std::vector<String> getAllFlashcardSets(fs::FS &fs){
   return sets;
 }
 
-std::vector<String> getAllMCQSets(fs::FS &fs){
+std::vector<String> getAllMCQSets(){
   std::vector<String> sets;
-  File root = fs.open("/mcqs");
+  File root = LittleFS.open("/mcqs");
 
   if (!root || !root.isDirectory()){
     Serial.println("failed to open mcqs directory");
@@ -668,10 +716,10 @@ void updateHome(){
 void updateMCQMenu(){
   static bool willNeedRender = true;
   static int menuOptionSelected = 0;
-  static std::vector<String> sets = getAllMCQSets(LittleFS);
+  static std::vector<String> sets = getAllMCQSets();
 
   if (mcqSetsChanged){
-    sets = getAllMCQSets(LittleFS);
+    sets = getAllMCQSets();
     mcqSetsChanged = false;
 
     menuOptionSelected = 0;
@@ -736,10 +784,10 @@ void updateMCQMenu(){
 void updateFlashcardMenu(){
   static bool willNeedRender = true;
   static int menuOptionSelected = 0;
-  static std::vector<String> sets = getAllFlashcardSets(LittleFS);
+  static std::vector<String> sets = getAllFlashcardSets();
 
   if (flashcardSetsChanged){
-    sets = getAllFlashcardSets(LittleFS);
+    sets = getAllFlashcardSets();
     flashcardSetsChanged = false;
 
     menuOptionSelected = 0;
@@ -760,10 +808,12 @@ void updateFlashcardMenu(){
         willNeedRender = true;
       }
     } else if (gesture == TILT_RIGHT){
-      deviceState = FLASHCARD_ACTIVE;
-      setSelected = sets[menuOptionSelected];
-      willNeedRender = true;
-      return;
+      if (!sets.empty()){
+        deviceState = FLASHCARD_ACTIVE;
+        setSelected = sets[menuOptionSelected];
+        willNeedRender = true;
+        return;
+      }
     } else if (gesture == TILT_LEFT){
       deviceState = HOME;
       willNeedRender = true;
@@ -797,12 +847,92 @@ void updateFlashcardMenu(){
 }
 
 void updateMCQ(){
+  static JsonDocument doc = parseMCQSet(setSelected);
 
-  //  play question
-  //  tilt for each answer (four directions or less)
-  //  spin to finish the quiz (if finish then say score and go back to select set menu)
-  //  on answer, say answer (right/wrong), then next question
-  //  keep a record of which questions were answered correctly/wrong and will keep on going until all questions were answered correctly
+  static std::vector<int> questionsToDo;
+  static std::vector<int> questionsWrong;
+  static std::vector<int> questionsRight;
+  static int currentQuestionIndex = -1;
+
+  static bool waitingForInput = false;
+  static bool needsSetup = false;
+
+  if (needsSetup) {
+    doc = parseMCQSet(setSelected);
+    JsonArray questions = doc["questions"];
+
+    questionsToDo.clear();
+    questionsWrong.clear();
+    questionsRight.clear();
+
+    for (int i = 0; i < questions.size(); i++) {
+      questionsToDo.push_back(i);
+    }
+
+    currentQuestionIndex = -1;
+    waitingForInput = false;
+    needsSetup = false;
+  }
+
+  if (waitingForInput){
+    JsonObject currentQuestion = doc["questions"][currentQuestionIndex];
+
+    float ax, ay, az;
+    if (imu.readAccel(ax, ay, az)){
+      Gesture gesture = detectGesture(ax, ay, az);
+      if (gesture != NONE){
+        if (gesture == SPIN){
+          needsSetup = true;
+          deviceState = MCQ_SET_MENU;
+          return;
+        } else {
+          if ((gesture == TILT_UP && currentQuestion["answer"] == 0)
+          || (gesture == TILT_RIGHT && currentQuestion["answer"] == 1)
+          || (gesture == TILT_DOWN && currentQuestion["answer"] == 2)
+          || (gesture == TILT_LEFT && currentQuestion["answer"] == 3)){
+            speech.speak("Correct.");
+            questionsRight.push_back(currentQuestionIndex);
+          } else {
+            int answer = currentQuestion["answer"];
+            String correctAnswer = currentQuestion["options"][answer].as<String>();
+            speech.speak("Wrong. The correct answer is " + correctAnswer);
+            questionsWrong.push_back(currentQuestionIndex);
+          }
+          waitingForInput = false;
+        }
+      }
+    }
+  } else {
+    if (questionsToDo.empty()){
+      if (questionsWrong.empty()){
+        speech.speak("Well done. You finished all the questions.");
+        needsSetup = true;
+        deviceState = MCQ_SET_MENU;
+        return;
+      } else {
+        questionsToDo = questionsWrong;
+        questionsWrong.clear();
+      }
+    } else {
+      int randomIndex = random(questionsToDo.size());
+      currentQuestionIndex = questionsToDo[randomIndex];
+      questionsToDo.erase(questionsToDo.begin() + randomIndex);
+
+      JsonObject currentQuestion = doc["questions"][currentQuestionIndex];
+      String toSpeak = currentQuestion["question"].as<String>();
+      JsonArray options = currentQuestion["options"];
+
+      for (int i = 0; i < options.size(); i++) {
+        toSpeak += ". Option ";
+        toSpeak += String(i + 1);
+        toSpeak += ". ";
+        toSpeak += options[i].as<String>();
+      }
+
+      speech.speak(toSpeak);
+      waitingForInput = true;
+    }
+  }
 }
 
 void updateFlashcard(){
@@ -855,7 +985,7 @@ void setup() {
     return;
   }
   
-  if (!initDirectories(LittleFS)){
+  if (!initDirectories()){
     return;
   }
 }
