@@ -158,7 +158,7 @@ Gesture detectTilt(float ax, float ay, float az){
       tiltState = TILT_WAITING_RETURN_DOWN;
     }
   }
-  
+
   if (tiltState == TILT_WAITING_RETURN_DOWN){
     if (abs(ax) < neutralThreshold && abs(ay) < neutralThreshold){
       tiltState = TILT_NEUTRAL;
@@ -206,7 +206,7 @@ Gesture detectFlick(float ax, float ay, float az){
       flickState = FLICK_WAITING_RETURN_DOWN;
     }
   }
-  
+
   if (flickState == FLICK_WAITING_RETURN_DOWN){
     if (abs(ax) < neutralThreshold && abs(ay) < neutralThreshold){
       flickState = FLICK_NEUTRAL;
@@ -243,7 +243,7 @@ Gesture detectSpin(float ax, float ay, float az){
   if (faceState == FACE_UP && az < faceDownThreshold){
     faceState = FACE_DOWN;
   }
-  
+
   if (faceState == FACE_DOWN && az > faceUpThreshold){
     faceState = FACE_UP;
     return SPIN;
@@ -572,7 +572,7 @@ void checkUSB(){
         mcqSetsChanged = true;
       } else if (type == "FLASHCARD"){
         flashcardSetsChanged = true;
-      } 
+      }
 
       Serial.println("OK");
     }
@@ -618,7 +618,7 @@ void checkHomeButton(){
 std::vector<String> getAllFlashcardSets(){
   std::vector<String> sets;
   File root = LittleFS.open("/flashcards");
-  
+
   File file = root.openNextFile();
 
   if (!root || !root.isDirectory()){
@@ -855,7 +855,7 @@ void updateMCQ(){
   static int currentQuestionIndex = -1;
 
   static bool waitingForInput = false;
-  static bool needsSetup = false;
+  static bool needsSetup = true;
 
   if (needsSetup) {
     doc = parseMCQSet(setSelected);
@@ -936,10 +936,89 @@ void updateMCQ(){
 }
 
 void updateFlashcard(){
-  //  tilt forward to flip to back then say
-  //  tilt left/right to say its right/wrong
-  //  spin to finish
-  //  keep showing wrong ones until finished
+  static JsonDocument doc = parseFlashcardSet(setSelected);
+
+  static std::vector<int> cardsToDo;
+  static std::vector<int> cardsWrong;
+  static std::vector<int> cardsRight;
+  static int currentCardIndex = -1;
+  static bool side = 0;
+
+  static bool waitingForInput = false;
+  static bool needsSetup = true;
+
+  if (needsSetup) {
+    doc = parseFlashcardSet(setSelected);
+    JsonArray cards = doc["cards"];
+
+    cardsToDo.clear();
+    cardsWrong.clear();
+    cardsRight.clear();
+
+    for (int i = 0; i < cards.size(); i++) {
+      cardsToDo.push_back(i);
+    }
+
+    currentCardIndex = -1;
+    waitingForInput = false;
+    needsSetup = false;
+    side = 0;
+  }
+
+  if (waitingForInput){
+    JsonObject currentCard = doc["cards"][currentCardIndex];
+
+    float ax, ay, az;
+    if (imu.readAccel(ax, ay, az)){
+      Gesture gesture = detectGesture(ax, ay, az);
+      if (gesture != NONE){
+        if (gesture == SPIN){
+          needsSetup = true;
+          deviceState = FLASHCARD_SET_MENU;
+          return;
+        } else if (gesture == TILT_UP || gesture == TILT_DOWN){
+          side = 1 - side;
+          if (side == 0){
+            String toSpeak = currentCard["front"].as<String>();
+            speech.speak(toSpeak);
+          } else {
+            String toSpeak = currentCard["back"].as<String>();
+            speech.speak(toSpeak);
+          }
+        } else if (gesture == TILT_RIGHT) {
+          cardsRight.push_back(currentCardIndex);
+          waitingForInput = false;
+          side = 0;
+        } else if (gesture == TILT_LEFT){
+          cardsWrong.push_back(currentCardIndex);
+          waitingForInput = false;
+          side = 0;
+        }
+      }
+    }
+  } else {
+    if (cardsToDo.empty()){
+      if (cardsWrong.empty()){
+        speech.speak("Well done. You finished all the flashcards.");
+        needsSetup = true;
+        deviceState = FLASHCARD_SET_MENU;
+        return;
+      } else {
+        cardsToDo = cardsWrong;
+        cardsWrong.clear();
+      }
+    } else {
+      int randomIndex = random(cardsToDo.size());
+      currentCardIndex = cardsToDo[randomIndex];
+      cardsToDo.erase(cardsToDo.begin() + randomIndex);
+
+      JsonObject currentCard = doc["cards"][currentCardIndex];
+      String toSpeak = currentCard["front"].as<String>();
+      speech.speak(toSpeak);
+
+      waitingForInput = true;
+    }
+  }
 }
 
 void setup() {
@@ -984,7 +1063,7 @@ void setup() {
     Serial.println("LittleFS Mount Failed");
     return;
   }
-  
+
   if (!initDirectories()){
     return;
   }
@@ -1016,6 +1095,6 @@ void loop() {
       updateFlashcard();
       break;
   }
-  
+
   delay(20);
 }
