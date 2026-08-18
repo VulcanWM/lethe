@@ -35,7 +35,7 @@ Both are located in the [`firmware-files`](firmware-files) folder: `lethe.ino` r
 
 ## Assembly
 
-The PCB is mounted to the bottom enclosure using four m2 self-tapping screws through the 2.2 mm mounting holes on the PCB and into standoffs printed as part of the enclosure. Then, the top and bottom parts of the enclosure are fitted together.
+The PCB is mounted to the bottom enclosure using three M2 self-tapping screws through the 2.2 mm mounting holes on the PCB and into standoffs printed as part of the enclosure. Then, the top and bottom parts of the enclosure are fitted together.
 
 ## Images
 This is what the schematic looks like:
