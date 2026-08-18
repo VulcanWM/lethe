@@ -33,6 +33,10 @@ There are 2 main components of the firmware: the code that will be uploaded onto
 
 Both are located in the [`firmware-files`](firmware-files) folder: `lethe.ino` refers to the ESP32 code, and `upload.py` refers to the file transmission code.
 
+## Assembly
+
+The PCB is mounted to the bottom enclosure using four m2 self-tapping screws through the 2.2 mm mounting holes on the PCB and into standoffs printed as part of the enclosure. Then, the top and bottom parts of the enclosure are fitted together.
+
 ## Images
 This is what the schematic looks like:
 ![schematic](images/schematic.png)
