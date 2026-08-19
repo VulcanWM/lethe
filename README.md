@@ -63,3 +63,4 @@ Also in the [BOM.csv](BOM.csv) file.
 | 100 nF Ceramic Capacitor        |    3     | [LCSC](https://www.lcsc.com/product-detail/C92490.html)                                                                                                 | $1.81 for 50             |
 | 10 µF Ceramic Capacitor         |    1     | [LCSC](https://www.lcsc.com/product-detail/C17024.html)                                                                                                 | $1.95 for 20             |
 | 1000 mAh LiPo Battery           |    1     | [AliExpress](https://www.aliexpress.com/item/1005009294502730.html)                                                                                     | $6.87                    |
+| **Total** | | | **$34.02 (excluding unknown AliExpress shipping)** |
